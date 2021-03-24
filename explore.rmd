@@ -3,7 +3,7 @@ library(RSQLite)
 library(tidyverse)
 library(audio)
 
-filename <- "wjazzd.db"
+filename <- "data/wjazzd.db"
 sqlite.driver <- dbDriver("SQLite")
 db <- dbConnect(sqlite.driver,
                 dbname = filename)
@@ -15,9 +15,9 @@ for (table in dbListTables(db)) {
 }
 
 # Import the midi note table
-midiNoteTable = read_csv("midiNoteTable.csv")
-scaleDegrees = read_csv("scaleDegrees.csv")
-enharmonicNotes = read_csv("enharmonicNotes.csv")
+midiNoteTable = read_csv("data/midiNoteTable.csv")
+scaleDegrees = read_csv("data/scaleDegrees.csv")
+enharmonicNotes = read_csv("data/enharmonicNotes.csv")
 ```
 
 The data is sourced from here[https://jazzomat.hfm-weimar.de/download/download.html].
@@ -167,7 +167,7 @@ getSoloMelody <- function(melid) {
 ```
 
 ```{r}
-saveMusic = function(wav_name, notes_pitch = NULL, notes_duration = NULL, tempo = 240) 
+getWave = function(wav_name, notes_pitch = NULL, notes_duration = NULL, tempo = 240) 
 {
   . <- NULL
   note <- NULL
@@ -215,31 +215,31 @@ saveMusic = function(wav_name, notes_pitch = NULL, notes_duration = NULL, tempo 
   tune_wave <- mapply(make_sine, tune$freq, tune$duration, 
     SIMPLIFY = FALSE) %>% do.call("c", .)
   
-  save.wave(tune_wave, wav_name)
+  # save.wave(tune_wave, wav_name)
 }
 ```
 
 
 ```{r}
-# melid = 222  # giant steps
-melid = 323  # so what
+melid = 222  # giant steps
+# melid = 323  # so what
 
 soloMetadata = getSoloMetaData(melid)
 soloMelodyNotes = generateMelodyNotes(melid)
 bassNotes = generateBassNotes(melid)
 bpm = soloMetadata$avgtempo
 
-soloMelodyNotes = soloMelodyNotes[1:100, ]
-bassNotes = bassNotes[1:100, ]
+# soloMelodyNotes = soloMelodyNotes[1:100, ]
+# bassNotes = bassNotes[1:100, ]
 
-saveMusic("melody.wav", notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60)
-saveMusic("bass.wav", notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration*bpm/60)
+melody = getWave("melody.wav", notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60)
+bass = getWave("bass.wav", notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration*bpm/60)
 
-melody = load.wave("melody.wav")
-bass = load.wave("bass.wav")
+combined = c(melody, rep(0, length(bass)-length(melody))) + bass
+combined = combined * (1 / max(combined))  # prevent distortion
 
-play(melody)
-play(bass)
+save.wave(combined, "combined.wav")
+play(combined)
 ```
 
 
