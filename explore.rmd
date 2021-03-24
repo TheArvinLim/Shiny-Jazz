@@ -1,7 +1,23 @@
-```{r}
+```{r, setup=TRUE}
 library(RSQLite)
 library(tidyverse)
 library(audio)
+
+filename <- "wjazzd.db"
+sqlite.driver <- dbDriver("SQLite")
+db <- dbConnect(sqlite.driver,
+                dbname = filename)
+dbListTables(db)
+
+tables = list()
+for (table in dbListTables(db)) {
+  tables[[table]] = dbReadTable(db, table)
+}
+
+# Import the midi note table
+midiNoteTable = read_csv("midiNoteTable.csv")
+scaleDegrees = read_csv("scaleDegrees.csv")
+enharmonicNotes = read_csv("enharmonicNotes.csv")
 ```
 
 The data is sourced from here[https://jazzomat.hfm-weimar.de/download/download.html].
@@ -9,14 +25,6 @@ The data is sourced from here[https://jazzomat.hfm-weimar.de/download/download.h
 Content[https://jazzomat.hfm-weimar.de/dbformat/dbcontent.html]
 Format[https://jazzomat.hfm-weimar.de/dbformat/dbformat.html]
 Glossary[https://jazzomat.hfm-weimar.de/dbformat/glossary.html]
-
-```{r}
-filename <- "wjazzd.db"
-sqlite.driver <- dbDriver("SQLite")
-db <- dbConnect(sqlite.driver,
-                dbname = filename)
-dbListTables(db)
-```
 
 ## Table info
 ###beats
@@ -70,20 +78,6 @@ track info,
 transcription info
 
 ```{r}
-tables = list()
-for (table in dbListTables(db)) {
-  tables[[table]] = dbReadTable(db, table)
-}
-```
-
-# Import the midi note table
-```{r}
-midiNoteTable = read_csv("midiNoteTable.csv")
-scaleDegrees = read_csv("scaleDegrees.csv")
-enharmonicNotes = read_csv("enharmonicNotes.csv")
-```
-
-```{r}
 
 getSoloMetaData <- function(melid){
   soloMetadata = tables$solo_info %>%
@@ -122,6 +116,31 @@ generateMelodyNotes <- function(melid_) {
   return (melodyWithRests)
 }
 
+generateBassNotes <- function(melid_) {
+  beats = tables$beats %>%
+    filter(melid == !!melid) %>%
+    left_join(midiNoteTable, by=c("bass_pitch"="MIDI Note")) %>%
+    mutate(Note = paste0(Note, Octave)) %>%
+    select(onset, Note)
+  
+  melodyWithRests = data.frame(onset=as.numeric(), duration=as.numeric(), Note=as.character())
+
+  nextNoteTime = beats$onset[1]
+  restRow = data.frame(onset=0, duration=nextNoteTime, Note="X")
+  melodyWithRests = rbind(melodyWithRests, restRow)
+  
+  for (n in 1:nrow(beats)) {
+    nextNoteTime = beats$onset[n+1] - beats$onset[n]
+    if (is.na(nextNoteTime)) {
+      nextNoteTime=1
+    }
+    noteRow = data.frame(onset=beats$onset[n], duration=nextNoteTime, Note=beats$Note[n])
+    melodyWithRests = rbind(melodyWithRests, noteRow)
+  }
+  
+  return (melodyWithRests)
+}
+
 getSoloMelody <- function(melid) {
   soloMetadata = getSoloMetaData(melid)
   
@@ -143,12 +162,12 @@ getSoloMelody <- function(melid) {
               by=c("Note"="Enharmonic")) %>%
     mutate(Degree = fct_relevel(Degree, "1", "b2", "2", "b3", "3", "4", "#4", "5", "b6", "6", "b7", "7"))
   
-  return
+  return(soloMelody)
 }
 ```
 
 ```{r}
-playMusic = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240) 
+saveMusic = function(wav_name, notes_pitch = NULL, notes_duration = NULL, tempo = 240) 
 {
   . <- NULL
   note <- NULL
@@ -162,7 +181,7 @@ playMusic = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240)
       duration = notes_duration
     ) %>%
     dplyr::mutate(
-      octave = substring(pitch, nchar(pitch)) %>%
+      octave = substring(pitch, nchar(as.character(pitch))) %>%
         {
           suppressWarnings(as.numeric(.))
         } %>%
@@ -196,19 +215,31 @@ playMusic = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240)
   tune_wave <- mapply(make_sine, tune$freq, tune$duration, 
     SIMPLIFY = FALSE) %>% do.call("c", .)
   
-  audio::play(tune_wave)
+  save.wave(tune_wave, wav_name)
 }
 ```
 
 
 ```{r}
-melid = 222  # giant steps
-#melid = 323  # so what
+# melid = 222  # giant steps
+melid = 323  # so what
 
 soloMetadata = getSoloMetaData(melid)
 soloMelodyNotes = generateMelodyNotes(melid)
+bassNotes = generateBassNotes(melid)
 bpm = soloMetadata$avgtempo
 
-playMusic(notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60)
+soloMelodyNotes = soloMelodyNotes[1:100, ]
+bassNotes = bassNotes[1:100, ]
 
+saveMusic("melody.wav", notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60)
+saveMusic("bass.wav", notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration*bpm/60)
+
+melody = load.wave("melody.wav")
+bass = load.wave("bass.wav")
+
+play(melody)
+play(bass)
 ```
+
+
