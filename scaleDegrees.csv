@@ -1,0 +1,13 @@
+﻿Degree,C,C#,Db,D,D#,Eb,E,F,F#,Gb,G,G#,Ab,A,A#,Bb,B
+1,C,C#,Db,D,D#,Eb,E,F,F#,Gb,G,G#,Ab,A,A#,Bb,B
+b2,Db,D,Ebb,Eb,E,Fb,F,Gb,G,Abb,Ab,A,Bbb,Bb,B,Cb,C
+2,D,D#,Eb,E,E#,F,F#,G,G#,Ab,A,A#,Bb,B,B#,C,C#
+b3,Eb,E,Fb,F,F#,Gb,G,Ab,A,Bbb,Bb,B,Cb,C,C#,Db,D
+3,E,E#,F,F#,Fx,G,G#,A,A#,Bb,B,B#,C,C#,Cx,D,D#
+4,F,F#,Gb,G,G#,Ab,A,Bb,B,Cb,C,C#,Db,D,D#,Eb,E
+#4,F#,Fx,G,G#,Gx,A,A#,B,B#,C,C#,Cx,D,D#,Dx,E,E#
+5,G,G#,Ab,A,A#,Bb,B,C,C#,Db,D,D#,Eb,E,E#,F,F#
+b6,Ab,A,Bbb,Bb,B,Cb,C,Db,D,Ebb,Eb,E,Fb,F,F#,Gb,G
+6,A,A#,Bb,B,B#,C,C#,D,D#,Eb,E,E#,F,F#,Fx,G,G#
+b7,Bb,B,Cb,C,C#,Db,D,Eb,E,Fb,F,F#,Gb,G,G#,Ab,A
+7,B,B#,C,C#,Cx,D,D#,E,E#,F,F#,Fx,G,G#,Gx,A,A#

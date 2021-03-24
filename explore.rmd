@@ -1,0 +1,214 @@
+```{r}
+library(RSQLite)
+library(tidyverse)
+library(audio)
+```
+
+The data is sourced from here[https://jazzomat.hfm-weimar.de/download/download.html].
+
+Content[https://jazzomat.hfm-weimar.de/dbformat/dbcontent.html]
+Format[https://jazzomat.hfm-weimar.de/dbformat/dbformat.html]
+Glossary[https://jazzomat.hfm-weimar.de/dbformat/glossary.html]
+
+```{r}
+filename <- "wjazzd.db"
+sqlite.driver <- dbDriver("SQLite")
+db <- dbConnect(sqlite.driver,
+                dbname = filename)
+dbListTables(db)
+```
+
+## Table info
+###beats
+Table for beat annotation of WJD melodies, referenced by melody(melid)
+
+###composition_info
+Infos regarding the underlying composition of a WJD solo, referenced by melody(melid)
+
+###db_info
+Information regarding the distributed database file like version information, license, etc
+
+###esac_info
+EsAC infos for EsAC melodies, referenced by melody(melid). 
+Note empty because we aren't looking at the EsAC database.
+
+###melody
+Main table for all melody events
+
+###melody_type
+Indicated type of melody: WJD solos or EsAC (Folk songs using Essen Associative Code), referenced by melody(melid)
+Note all SOLO. 
+
+###popsong_info
+Pop song infos, referenced by melody(melid)
+Note empty
+
+###record_info
+Infos regarding the specific audio recording of a WJD solo was taken from, referenced by melody(melid)
+
+###sections
+All sections (phrase, chorus, form, chords, etc.), referenced by melody(melid)
+
+###solo_info
+Solo infos for WJD solos, referenced by melody(melid)
+
+###track_info
+Information specific to a track on a record (or CD)
+
+###transcription_info
+Transcription infos for WJD solos, referenced by melody(melid)
+
+# Main tables
+THe main tables I care about seem to be:
+beats,
+composition info,
+melody,
+record info,
+sections,
+solo info,
+track info,
+transcription info
+
+```{r}
+tables = list()
+for (table in dbListTables(db)) {
+  tables[[table]] = dbReadTable(db, table)
+}
+```
+
+# Import the midi note table
+```{r}
+midiNoteTable = read_csv("midiNoteTable.csv")
+scaleDegrees = read_csv("scaleDegrees.csv")
+enharmonicNotes = read_csv("enharmonicNotes.csv")
+```
+
+```{r}
+
+getSoloMetaData <- function(melid){
+  soloMetadata = tables$solo_info %>%
+    filter(melid==!!melid) %>%
+    left_join(tables$track_info, by=c("trackid", "recordid", "compid"))
+  
+  return(soloMetadata)
+}
+
+generateMelodyNotes <- function(melid_) {
+  soloMelody = tables$melody %>%
+    filter(melid==melid_) %>%
+    left_join(midiNoteTable, by=c("pitch"="MIDI Note"))
+    
+  melody = soloMelody %>%
+    mutate(Note = paste0(Note, Octave)) %>%
+    select(onset, duration, Note)
+  
+  melodyWithRests = data.frame(onset=as.numeric(), duration=as.numeric(), Note=as.character())
+  currentTime = 0
+  for (n in 1:nrow(melody)) {
+    nextNoteTime = melody$onset[n] - currentTime
+    
+    if (nextNoteTime > 0) {
+      restRow = data.frame(onset=currentTime, duration=nextNoteTime, Note="X")
+      melodyWithRests = rbind(melodyWithRests, restRow)
+    }
+    
+    noteRow = melody[n,]
+    melodyWithRests = rbind(melodyWithRests, noteRow)
+    
+    currentTime = melody$onset[n] + melody$duration[n]
+     
+  }
+  
+  return (melodyWithRests)
+}
+
+getSoloMelody <- function(melid) {
+  soloMetadata = getSoloMetaData(melid)
+  
+  soloKey = soloMetadata$key
+  soloKeyCenter = substr(soloKey, 1, 1)
+  
+  scaleDegreesLonger = scaleDegrees %>%
+    pivot_longer(cols = !Degree, names_to="Key", values_to="Note")
+  
+  soloScaleDegrees = scaleDegreesLonger %>%
+    filter(Key==soloKeyCenter) %>%
+    left_join(enharmonicNotes, by="Note")
+  
+  soloMelody = tables$melody %>%
+    filter(melid==!!melid) %>%
+    left_join(midiNoteTable, by=c("pitch"="MIDI Note")) %>%
+    left_join(soloScaleDegrees %>%
+                select(c("Degree", "Enharmonic")), 
+              by=c("Note"="Enharmonic")) %>%
+    mutate(Degree = fct_relevel(Degree, "1", "b2", "2", "b3", "3", "4", "#4", "5", "b6", "6", "b7", "7"))
+  
+  return
+}
+```
+
+```{r}
+playMusic = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240) 
+{
+  . <- NULL
+  note <- NULL
+  octave <- NULL
+  pitch <- NULL
+  notes <- c(A = 0, B = 2, C = 3, D = 5, E = 7, F = 8, G = 10)
+  
+  tune <-
+    tibble::data_frame(
+      pitch = notes_pitch,
+      duration = notes_duration
+    ) %>%
+    dplyr::mutate(
+      octave = substring(pitch, nchar(pitch)) %>%
+        {
+          suppressWarnings(as.numeric(.))
+        } %>%
+        ifelse(is.na(.), 4, .),
+      note = ifelse(notes_pitch!="X", 
+                    notes[substr(pitch, 1, 1)] + 
+                      grepl("#", pitch) -  
+                      grepl("b", pitch) + 
+                      octave * 12 +
+                      12 * (notes[substr(pitch, 1, 1)] < 3),
+                    0),
+      freq = ifelse(note!=0, 
+                    2^((note - 60) / 12) * 440,
+                    0
+      )
+    )
+  
+  sample_rate <- 44100
+  make_sine <- function(freq, duration) {
+    wave <- sin(seq(0, duration/tempo * 60, 1/sample_rate) * 
+      freq * 2 * pi)
+    
+    n = max(2/(length(wave)-2)*sample_rate, 50)
+    
+    fade <- seq(0, 1, n/sample_rate)
+    
+    wave * c(fade, rep(1, max(0, length(wave) - 2 * length(fade))), 
+    rev(fade))
+    
+  }
+  tune_wave <- mapply(make_sine, tune$freq, tune$duration, 
+    SIMPLIFY = FALSE) %>% do.call("c", .)
+  
+  audio::play(tune_wave)
+}
+```
+
+
+```{r}
+melid = 222  # giant steps
+#melid = 323  # so what
+
+soloMetadata = getSoloMetaData(melid)
+soloMelodyNotes = generateMelodyNotes(melid)
+bpm = soloMetadata$avgtempo
+
+playMusic(notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60)
+
+```
