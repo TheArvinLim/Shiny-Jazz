@@ -167,7 +167,7 @@ getSoloMelody <- function(melid) {
 ```
 
 ```{r}
-getWave = function(wav_name, notes_pitch = NULL, notes_duration = NULL, tempo = 240, note_shortness=100) 
+getWave = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240, note_shortness=100) 
 {
   . <- NULL
   note <- NULL
@@ -200,52 +200,47 @@ getWave = function(wav_name, notes_pitch = NULL, notes_duration = NULL, tempo = 
     )
   
   sample_rate <- 44100
-  
-  make_wave = function(freq, duration) {
-    # # browser()
-    # print(freq)
-    # print(duration)
-    if (freq==0) {
-      wave = tuneR::silence(duration=duration, samp.rate = sample_rate, xunit="time")
-    }
-    else {
-      wave = tuneR::sine(freq = freq, duration=duration, samp.rate=sample_rate, xunit="time")
-      wave = tuneR::prepComb(wave)
-    }
+  make_sine <- function(freq, duration) {
+    wave <- sin(seq(0, duration/tempo * 60, 1/sample_rate) * 
+      freq * 2 * pi)
     
+    n = max(2/(length(wave)-2)*sample_rate, note_shortness)
     
-    return (wave)
+    fade <- seq(0, 1, n/sample_rate)
+    
+    wave * c(fade, rep(1, max(0, length(wave) - 2 * length(fade))), 
+    rev(fade))
+    
   }
+  tune_wave <- mapply(make_sine, tune$freq, tune$duration, 
+    SIMPLIFY = FALSE) %>% do.call("c", .)
   
-  tune_wave <- mapply(make_wave, tune$freq, tune$duration)
-  
-  tune_waves = tune_wave[[1]]
-  for (i in 2:length(tune_wave)) {
-    tune_waves = tuneR::bind(tune_waves, tune_wave[[i]])
-  }
-  
-  return(tune_waves@left)
+  # save.wave(tune_wave, wav_name)
 }
 ```
 
 
 ```{r}
-melid = 222  # giant steps
-melid = 323  # so what
-
+# melid = 222  # giant steps
+melid = 323  # so what 
+# melid = 93 # joy spring 
+# melid = 431  # footprints
 soloMetadata = getSoloMetaData(melid)
 soloMelodyNotes = generateMelodyNotes(melid)
 bassNotes = generateBassNotes(melid)
 bpm = soloMetadata$avgtempo
 
-soloMelodyNotes = soloMelodyNotes[1:30, ]
-bassNotes = bassNotes[1:30, ]
+# soloMelodyNotes = soloMelodyNotes[1:30, ]
+# bassNotes = bassNotes[1:30, ]
 
-melody = getWave("melody.wav", notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration, 250)
-bass = getWave("bass.wav", notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration, 250)
+melody = getWave(notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60, 75)
+bass = getWave(notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration*bpm/60, 500)
 
-combined = c(melody, rep(0, length(bass)-length(melody))) + bass
-combined = combined * (1 / max(combined))  # prevent distortion
+addToBass = rep(0, max(0, length(melody)-length(bass)))
+addToMelody = rep(0, max(0, length(bass)-length(melody)))
+
+combined = c(melody, addToMelody) + c(bass, addToBass)
+combined = combined * (1 / max(combined, na.rm = T))  # prevent distortion
 
 save.wave(combined, "audio/combined.wav")
 wavFile = load.wave("audio/combined.wav")
