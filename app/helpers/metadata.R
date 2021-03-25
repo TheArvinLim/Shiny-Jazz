@@ -36,12 +36,9 @@ getStartOnset <- function(melid) {
   return (min(beats$onset))
 }
 
-getBarTimes <- function(melid) {
-  barDurs = tables$beats %>%
-    filter(melid == !!melid) %>%
-    filter(beat == 1) %>%
-    select(onset, bar) %>%
-    mutate(duration = lead(onset, 1) - onset)
+getBeats <- function(melid) {
+  beats = tables$beats %>%
+    filter(melid == !!melid)
 
-  return (barDurs)
+  return (beats)
 }

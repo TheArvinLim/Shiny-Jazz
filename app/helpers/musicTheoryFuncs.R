@@ -21,3 +21,22 @@ getSnareBeats = function(timeSig) {
     return(2)
   }
 }
+
+convertToKeyEnharmonic = function(note, key) {
+  if (note =="X" || length(note)==0) {
+    return(note)
+  }
+
+  octave = substr(note, nchar(note), nchar(note))
+  note = substr(note, 1, nchar(note)-1)
+
+  enharmonic = enharmonicNotes %>%
+    filter(Note %in% scaleDegrees[[key]]) %>%
+    filter(Enharmonic==note) %>%
+    pull(Note)
+
+  if (length(enharmonic)==0) {
+    return(note)
+  }
+  return(paste0(enharmonic, octave))
+}

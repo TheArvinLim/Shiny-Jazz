@@ -21,7 +21,10 @@ ui <- fluidPage(
     # Main panel for displaying outputs ----
     mainPanel(
       uiOutput("bar"),
-      uiOutput("notePlaying")
+      uiOutput("notePlaying"),
+      uiOutput("chordPlaying"),
+      uiOutput("beatPlaying"),
+      uiOutput("songTime")
     )
   )
 )

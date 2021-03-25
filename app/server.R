@@ -1,14 +1,18 @@
 server <- function(input, output) {
   audioInstance = reactiveVal(NULL)
   barNum = reactiveVal(NULL)
+  chordPlaying = reactiveVal(NULL)
+  beatPlaying = reactiveVal(NULL)
   melid = reactiveVal(NULL)
   startTime = reactiveVal(NULL)
   pauseStartTime = reactiveVal(NULL)
   playing = reactiveVal(FALSE)
   notePlaying = reactiveVal(NULL)
+  songTime = reactiveVal(NULL)
+  songMetadata = reactiveVal(NULL)
 
   melodyNotes = reactiveVal(NULL)
-  barTimes = reactiveVal(NULL)
+  beats = reactiveVal(NULL)
   startOnset = reactiveVal(NULL)
 
   observeEvent(input$playMusic, {
@@ -19,8 +23,9 @@ server <- function(input, output) {
 
     melid(strsplit(input$selectedMusic, " - ")[[1]][1])
     melodyNotes(generateMelodyNotes(melid()))
-    barTimes(getBarTimes(melid()))
+    beats(getBeats(melid()))
     startOnset(getStartOnset(melid()))
+    songMetadata(getSoloMetaData(melid()))
 
     filepath = file.path("audio", paste0(melid(), ".wav"))
 
@@ -66,26 +71,62 @@ server <- function(input, output) {
     as.character(notePlaying())
   })
 
+  output$beatPlaying = renderUI({
+    as.character(beatPlaying())
+  })
+
+  output$chordPlaying = renderUI({
+    as.character(chordPlaying())
+  })
+
+
+  output$songTime = renderUI({
+    as.character(songTime())
+  })
+
   observe ({
-    invalidateLater(1)
+    invalidateLater(10)
     isolate ({
       if (playing()) {
         timeElapsed = as.numeric(difftime(Sys.time(), startTime()), units="secs") + startOnset()
 
-        print(timeElapsed)
-
         barNum (
-          barTimes() %>%
+          beats() %>%
             filter(onset <= timeElapsed) %>%
             slice_tail() %>%
             pull(bar)
         )
 
+        beatPlaying (
+          beats() %>%
+            filter(onset <= timeElapsed) %>%
+            slice_tail() %>%
+            pull(beat)
+        )
+
+        chordPlaying (
+          beats() %>%
+            filter(onset <= timeElapsed) %>%
+            filter(chord != "") %>%
+            slice_tail() %>%
+            pull(chord)
+        )
+
+        key = songMetadata()$key %>% strsplit("-")
+        key = key[[1]][1]
+
         notePlaying (
           melodyNotes() %>%
             filter(onset <= timeElapsed) %>%
+            filter(Note != "X") %>%
             slice_tail() %>%
-            pull(Note)
+            mutate(Note = as.character(Note)) %>%
+            pull(Note) %>%
+            convertToKeyEnharmonic(key)
+        )
+
+        songTime(
+          round(timeElapsed - startOnset(), 2)
         )
       }
     })
