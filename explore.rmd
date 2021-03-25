@@ -1,4 +1,4 @@
-```{r, setup=TRUE}
+```{r, setup=TRUE, echo=FALSE}
 library(RSQLite)
 library(tidyverse)
 library(audio)
@@ -116,9 +116,16 @@ generateMelodyNotes <- function(melid_) {
   return (melodyWithRests)
 }
 
-generateBassNotes <- function(melid_) {
+generateBassNotes <- function(melid_, bassNoteLength=0.8) {
+  soloMetaData = getSoloMetaData(melid_)
+  bpm = soloMetaData$avgtempo
+  beatLengthSeconds = 1 / (bpm / 60)
+  bassNoteLengthSeconds = beatLengthSeconds * bassNoteLength
+  restLengthSeconds = beatLengthSeconds * (1-bassNoteLength)
+  
+  
   beats = tables$beats %>%
-    filter(melid == !!melid) %>%
+    filter(melid == melid_) %>%
     left_join(midiNoteTable, by=c("bass_pitch"="MIDI Note")) %>%
     mutate(Note = paste0(Note, Octave)) %>%
     select(onset, Note)
@@ -134,12 +141,49 @@ generateBassNotes <- function(melid_) {
     if (is.na(nextNoteTime)) {
       nextNoteTime=1
     }
-    noteRow = data.frame(onset=beats$onset[n], duration=nextNoteTime, Note=beats$Note[n])
-    melodyWithRests = rbind(melodyWithRests, noteRow)
+    noteRow = data.frame(onset=beats$onset[n], duration=bassNoteLengthSeconds, Note=beats$Note[n])
+    restRow = data.frame(onset=beats$onset[n] + bassNoteLengthSeconds, duration=restLengthSeconds, Note="X")
+    melodyWithRests = rbind(melodyWithRests, noteRow, restRow)
   }
   
   return (melodyWithRests)
 }
+
+generateSnareNotes <- function(melid_, snareBeats=c(2, 4), snareLengthSeconds=0.05) {
+  beats = tables$beats %>%
+    filter(melid == melid_) %>%
+    filter(beat %in% snareBeats) %>%
+    select(onset)
+  
+  melodyWithRests = data.frame(onset=as.numeric(), duration=as.numeric(), Note=as.character())
+
+  nextNoteTime = beats$onset[1]
+  restRow = data.frame(onset=0, duration=nextNoteTime, Note="X")
+  melodyWithRests = rbind(melodyWithRests, restRow)
+  
+  for (n in 1:nrow(beats)) {
+    nextNoteTime = beats$onset[n+1] - beats$onset[n]
+    if (is.na(nextNoteTime)) {
+      nextNoteTime=1
+    }
+    noteRow = data.frame(onset=beats$onset[n], duration=snareLengthSeconds, Note="C")
+    restRow = data.frame(onset=beats$onset[n]+snareLengthSeconds, duration=nextNoteTime-snareLengthSeconds, Note="X")
+    melodyWithRests = rbind(melodyWithRests, noteRow, restRow)
+  }
+  
+  return (melodyWithRests)
+}
+
+# generateSnareNotes <- function(melid_, bassNotes, snareBeats=c(2, 4), snareLengthSeconds=0.1) {
+#   melodyWithRests = bassNotes %>%
+#       left_join(tables$beats %>%
+#                   filter(melid == melid_) %>%
+#                   select(c("onset", "beat")), by="onset") %>%
+#       mutate(Note = ifelse(beat %in% snareBeats, "A", "X")) %>%
+#       select(-beat)
+#   
+#   return (melodyWithRests)
+# }
 
 getSoloMelody <- function(melid) {
   soloMetadata = getSoloMetaData(melid)
@@ -167,7 +211,40 @@ getSoloMelody <- function(melid) {
 ```
 
 ```{r}
-getWave = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240, note_shortness=100) 
+sine <- function(freq, duration, note_shortness, tempo, sample_rate) {
+  wave <- sin(seq(0, duration/tempo * 60, 1/sample_rate) * 
+    freq * 2 * pi)
+  
+  n = max(2/(length(wave)-2)*sample_rate, note_shortness)
+  
+  fade <- seq(0, 1, n/sample_rate)
+  
+  wave * c(fade, rep(1, max(0, length(wave) - 2 * length(fade))), 
+  rev(fade))
+  
+}
+
+whiteNoise <- function(freq, duration, note_shortness, tempo, sample_rate, cutoff=0.02) {
+  if (freq == 0) {
+    wave <- rep(0, length(seq(0, duration/tempo * 60, 1/sample_rate)))
+  }
+  else {
+    wave <- rnorm(seq(0, duration/tempo * 60, 1/sample_rate))
+    wave = wave * (1 / max(wave, na.rm = T))  # normalise
+    wave = pmin(cutoff, wave)
+    wave = pmax(-cutoff, wave)  # apply filter
+
+  }
+  
+  n = max(2/(length(wave)-2)*sample_rate, note_shortness)
+  
+  fade <- seq(0, 1, n/sample_rate)
+  
+  wave * c(fade, rep(1, max(0, length(wave) - 2 * length(fade))), 
+  rev(fade))
+}
+
+getWave = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240, note_shortness=100, wave_func=sine) 
 {
   . <- NULL
   note <- NULL
@@ -200,51 +277,70 @@ getWave = function(notes_pitch = NULL, notes_duration = NULL, tempo = 240, note_
     )
   
   sample_rate <- 44100
-  make_sine <- function(freq, duration) {
-    wave <- sin(seq(0, duration/tempo * 60, 1/sample_rate) * 
-      freq * 2 * pi)
-    
-    n = max(2/(length(wave)-2)*sample_rate, note_shortness)
-    
-    fade <- seq(0, 1, n/sample_rate)
-    
-    wave * c(fade, rep(1, max(0, length(wave) - 2 * length(fade))), 
-    rev(fade))
-    
-  }
-  tune_wave <- mapply(make_sine, tune$freq, tune$duration, 
+ 
+  tune_wave <- mapply(wave_func, tune$freq, tune$duration, note_shortness, tempo, sample_rate,
     SIMPLIFY = FALSE) %>% do.call("c", .)
-  
-  # save.wave(tune_wave, wav_name)
 }
 ```
 
+```{r}
+getSnareBeats = function(timeSig) {
+  if (timeSig == "4/4") {
+    return(c(2, 4))
+  }
+  else if (timeSig == "3/4") {
+    return(2)
+  }
+  else if (timeSig == "6/8") {
+    return(4)
+  }
+  else if (timeSig == "9/4") {
+    return(c(2, 5, 8))
+  }
+  else if (timeSig == "5/4") {
+    return(c(2, 4))
+  }
+  else if (timeSig == "6/4") {
+    return(c(3, 6))
+  }
+  else {
+    return(2)
+  }
+}
+```
 
 ```{r}
+pause(audioInstance)
+
 # melid = 222  # giant steps
-melid = 323  # so what 
-# melid = 93 # joy spring 
+# melid = 323  # so what
+# melid = 93 # joy spring
 # melid = 431  # footprints
+melid = 133  # anthropology
+
 soloMetadata = getSoloMetaData(melid)
 soloMelodyNotes = generateMelodyNotes(melid)
 bassNotes = generateBassNotes(melid)
-bpm = soloMetadata$avgtempo
+snareBeats = getSnareBeats(soloMetadata$signature)
+snareNotes = generateSnareNotes(melid, snareBeats=snareBeats)
 
-# soloMelodyNotes = soloMelodyNotes[1:30, ]
-# bassNotes = bassNotes[1:30, ]
+bpm = soloMetadata$avgtem
+# snareNotes = snareNotes[1:30, ]
 
-melody = getWave(notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60, 75)
-bass = getWave(notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration*bpm/60, 500)
+melody = getWave(notes_pitch=soloMelodyNotes$Note, tempo=bpm, notes_duration=soloMelodyNotes$duration*bpm/60, 200)
+bass = getWave(notes_pitch=bassNotes$Note, tempo=bpm, notes_duration=bassNotes$duration*bpm/60, 200)
+snare = getWave(notes_pitch=snareNotes$Note, tempo=bpm, notes_duration=snareNotes$duration*bpm/60, 200, wave_func=whiteNoise)
 
-addToBass = rep(0, max(0, length(melody)-length(bass)))
-addToMelody = rep(0, max(0, length(bass)-length(melody)))
+addToBass = rep(0, max(0, length(melody)-length(bass), length(snare)-length(bass)))
+addToMelody = rep(0, max(0, length(bass)-length(melody), length(snare)-length(melody)))
+addToSnare = rep(0, max(0, length(bass)-length(snare), length(melody)-length(snare)))
 
-combined = c(melody, addToMelody) + c(bass, addToBass)
+combined = c(melody, addToMelody) + c(bass, addToBass) + c(snare, addToSnare)
 combined = combined * (1 / max(combined, na.rm = T))  # prevent distortion
 
 save.wave(combined, "audio/combined.wav")
 wavFile = load.wave("audio/combined.wav")
-play(wavFile)
+audioInstance = play(wavFile)
 ```
 
 
