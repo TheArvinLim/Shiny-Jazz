@@ -1,0 +1,60 @@
+---
+title: "Visualisations"
+author: "Harmonic Analytics"
+date: "26/03/2021"
+output: html_document
+---
+
+```{r, setup, include=FALSE}
+library(RSQLite)
+library(tidyverse)
+library(audio)
+library(shiny)
+library(shinyjs)
+
+source("app/helpers/metadata.R")
+source("app/helpers/musicTheoryFuncs.R")
+source("app/helpers/noteGeneration.R")
+source("app/helpers/playMusic.R")
+source("app/helpers/waveGeneration.R")
+
+filename <- "app/data/wjazzd.db"
+sqlite.driver <- dbDriver("SQLite")
+db <- dbConnect(sqlite.driver,
+                dbname = filename)
+
+tables = list()
+for (table in dbListTables(db)) {
+  tables[[table]] = dbReadTable(db, table)
+}
+
+# Import the midi note table
+midiNoteTable = read_csv("app/data/midiNoteTable.csv")
+scaleDegrees = read_csv("app/data/scaleDegrees.csv")
+enharmonicNotes = read_csv("app/data/enharmonicNotes.csv")
+```
+
+# meta plots
+```{r}
+melid = 1
+
+soloKey = strsplit(getSoloMetaData(melid)$key, "-")[[1]][1]
+
+soloMelody = tables$melody %>% filter(melid==!!melid)
+soloBeats = tables$beats %>% filter(melid==!!melid) %>%
+  mutate(chord=ifelse(chord=="", NA, chord)) %>%
+  fill(chord, .direction="down") %>%
+  rowwise() %>%
+  mutate(chordRoot = getChordRoot(chord))
+
+comb = soloMelody %>%
+  left_join(soloBeats, by=c("bar", "beat")) %>%
+  left_join(midiNoteTable, by=c("pitch"="MIDI Note")) %>%
+  rowwise() %>%
+  mutate(enharmonic = convertToKeyEnharmonic(Note, soloKey)) %>%
+  rowwise() %>%
+  mutate(scaleDegree = getInterval(soloKey, enharmonic),
+         chordDegree = getInterval(chordRoot, enharmonic)) 
+  
+
+```

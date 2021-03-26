@@ -3,6 +3,7 @@ soloChoices = tidyr::unite(tables$solo_info, "Name", c("melid", "title", "perfor
 
 
 ui <- fluidPage(
+  useShinyjs(),
 
   titlePanel("YA lIKE JAZZ?"),
 

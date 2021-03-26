@@ -23,12 +23,22 @@ getSnareBeats = function(timeSig) {
 }
 
 convertToKeyEnharmonic = function(note, key) {
+  if (is.na(key) || key == "") {
+    key = "C"
+  }
+
   if (note =="X" || length(note)==0) {
     return(note)
   }
 
   octave = substr(note, nchar(note), nchar(note))
-  note = substr(note, 1, nchar(note)-1)
+
+  if (suppressWarnings(is.na(as.numeric(octave)))) {
+    octave = ""
+  }
+  else {
+    note = substr(note, 1, max(1, nchar(note)-1))
+  }
 
   enharmonic = enharmonicNotes %>%
     filter(Note %in% scaleDegrees[[key]]) %>%
@@ -39,4 +49,21 @@ convertToKeyEnharmonic = function(note, key) {
     return(note)
   }
   return(paste0(enharmonic, octave))
+}
+
+getChordRoot = function(chordName) {
+  root = substr(chordName, 1, 2)
+  if (!(root %in% enharmonicNotes$Note)) {
+    root = substr(chordName, 1, 1)
+  }
+
+  return(root)
+}
+
+getInterval = function(note1, note2) {
+  degree = scaleDegrees[c("Degree", note1)] %>%
+    filter(get(note1) == note2) %>%
+    pull(Degree)
+
+  return(degree)
 }

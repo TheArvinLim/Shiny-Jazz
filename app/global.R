@@ -2,6 +2,7 @@ library(RSQLite)
 library(tidyverse)
 library(audio)
 library(shiny)
+library(shinyjs)
 
 source("helpers/metadata.R")
 source("helpers/musicTheoryFuncs.R")

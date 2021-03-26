@@ -27,14 +27,17 @@ server <- function(input, output) {
     startOnset(getStartOnset(melid()))
     songMetadata(getSoloMetaData(melid()))
 
-    filepath = file.path("audio", paste0(melid(), ".wav"))
+    filepath = file.path("www", paste0(melid(), ".wav"))
 
     if (!file.exists(filepath)) {
-      createWavFile(melid(), "audio")
+      createWavFile(melid(), "www")
     }
 
-    audioInstance(playWavFile(filepath))
-    startTime(Sys.time())
+    audioHTML = paste0("<audio id=audio-player src=", melid(), ".wav type=audio/wav controls=TRUE>")
+    runjs(paste0("document.getElementById('playMusic').insertAdjacentHTML('beforeend', '", audioHTML, "');"))
+    runjs("document.getElementById('audio-player').play();")
+    #audioInstance(playWavFile(filepath))
+    #startTime(Sys.time())
     playing(TRUE)
   })
 
@@ -81,53 +84,54 @@ server <- function(input, output) {
 
 
   output$songTime = renderUI({
-    as.character(songTime())
+    as.character(input$timePlayed)
   })
 
   observe ({
-    invalidateLater(10)
+    invalidateLater(1000)
     isolate ({
       if (playing()) {
-        timeElapsed = as.numeric(difftime(Sys.time(), startTime()), units="secs") + startOnset()
 
-        barNum (
-          beats() %>%
-            filter(onset <= timeElapsed) %>%
-            slice_tail() %>%
-            pull(bar)
-        )
+        runjs("Shiny.onInputChange('timePlayed', document.getElementById('audio-player').currentTime);")
 
-        beatPlaying (
-          beats() %>%
-            filter(onset <= timeElapsed) %>%
-            slice_tail() %>%
-            pull(beat)
-        )
+        if (length(input$timePlayed) > 0) {
+          timeElapsed = input$timePlayed + startOnset()
 
-        chordPlaying (
-          beats() %>%
-            filter(onset <= timeElapsed) %>%
-            filter(chord != "") %>%
-            slice_tail() %>%
-            pull(chord)
-        )
+          barNum (
+            beats() %>%
+              filter(onset <= timeElapsed) %>%
+              slice_tail() %>%
+              pull(bar)
+          )
 
-        key = songMetadata()$key %>% strsplit("-")
-        key = key[[1]][1]
+          beatPlaying (
+            beats() %>%
+              filter(onset <= timeElapsed) %>%
+              slice_tail() %>%
+              pull(beat)
+          )
 
-        notePlaying (
-          melodyNotes() %>%
-            filter(onset <= timeElapsed) %>%
-            filter(Note != "X") %>%
-            slice_tail() %>%
-            mutate(Note = as.character(Note)) %>%
-            pull(Note) %>%
-            convertToKeyEnharmonic(key)
-        )
+          chordPlaying (
+            beats() %>%
+              filter(onset <= timeElapsed) %>%
+              filter(chord != "") %>%
+              slice_tail() %>%
+              pull(chord)
+          )
 
-        songTime(
-          round(timeElapsed - startOnset(), 2)
-        )
+          key = songMetadata()$key %>% strsplit("-")
+          key = key[[1]][1]
+
+          notePlaying (
+            melodyNotes() %>%
+              filter(onset <= timeElapsed) %>%
+              filter(Note != "X") %>%
+              slice_tail() %>%
+              mutate(Note = as.character(Note)) %>%
+              pull(Note) %>%
+              convertToKeyEnharmonic(key)
+          )
+        }
       }
     })
   })
