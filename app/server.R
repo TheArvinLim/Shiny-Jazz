@@ -33,8 +33,7 @@ server <- function(input, output) {
       createWavFile(melid(), "www")
     }
 
-    audioHTML = paste0("<audio id=audio-player src=", melid(), ".wav type=audio/wav controls=TRUE>")
-    runjs(paste0("document.getElementById('playMusic').insertAdjacentHTML('beforeend', '", audioHTML, "');"))
+    runjs(paste0("document.getElementById('audio-player').setAttribute('src','", melid(), ".wav');"))
     runjs("document.getElementById('audio-player').play();")
     #audioInstance(playWavFile(filepath))
     #startTime(Sys.time())
