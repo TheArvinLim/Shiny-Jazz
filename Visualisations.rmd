@@ -36,25 +36,72 @@ enharmonicNotes = read_csv("app/data/enharmonicNotes.csv")
 
 # meta plots
 ```{r}
-melid = 1
-
-soloKey = strsplit(getSoloMetaData(melid)$key, "-")[[1]][1]
-
-soloMelody = tables$melody %>% filter(melid==!!melid)
-soloBeats = tables$beats %>% filter(melid==!!melid) %>%
+spicyTable = tables$melody %>%
+  left_join(tables$solo_info, by=c("melid")) %>%
+  mutate(keyRoot = strsplit(key, "-")[[1]][1]) %>%
+  left_join(tables$beats, by=c("melid", "bar", "beat")) %>%
+  left_join(midiNoteTable, by=c("pitch"="MIDI Note")) %>%
   mutate(chord=ifelse(chord=="", NA, chord)) %>%
   fill(chord, .direction="down") %>%
   rowwise() %>%
-  mutate(chordRoot = getChordRoot(chord))
+  mutate(spiciness = getSpiciness(chord, Note)) %>%
+  mutate(spicinessDuration = spiciness*duration)
 
-comb = soloMelody %>%
-  left_join(soloBeats, by=c("bar", "beat")) %>%
-  left_join(midiNoteTable, by=c("pitch"="MIDI Note")) %>%
+spicyTable2 = spicyTable %>% left_join(tables$track_info, by=c("trackid")) 
+
+normalisedSpiciness = spicyTable2 %>%
+  group_by(melid) %>%
+  summarise(totalSpiciness=sum(spiciness, na.rm=T),
+            totalDuration=max(onset.x)-min(onset.x),
+            performer=performer[1],
+            title=title[1],
+            recordingdate=recordingdate[1],
+            numNotes = n()) %>%
+  mutate(normalisedSpiciness=totalSpiciness/numNotes,
+         noteRate = numNotes/totalDuration) %>%
   rowwise() %>%
-  mutate(enharmonic = convertToKeyEnharmonic(Note, soloKey)) %>%
-  rowwise() %>%
-  mutate(scaleDegree = getInterval(soloKey, enharmonic),
-         chordDegree = getInterval(chordRoot, enharmonic)) 
+  mutate(recordingYear = as.numeric(getYear(recordingdate)))
+
+plotly::ggplotly(normalisedSpiciness %>%
+  ggplot(aes(x=recordingYear, y=normalisedSpiciness, fill=title, colour=performer)) + 
+  geom_jitter())
+
+artistSpiciness = normalisedSpiciness %>%
+  group_by(performer) %>%
+  summarise(avgNormalisedSpiciness=mean(normalisedSpiciness),
+            avgNoteRate = mean(noteRate),
+            avgRecordingYear = mean(recordingYear))
+
+plotly::ggplotly(artistSpiciness %>%
+  ggplot(aes(x=avgRecordingYear, y=avgNormalisedSpiciness, colour = performer)) + 
+  geom_jitter() +
+  scale_y_continuous(limits=c(0.75, 1.4)))
+
+```
+
+```{r}
+getYear = function(dateStr) {
+  dateStr1 = strsplit(dateStr, "[.]")
+  for (num in dateStr1[[1]]) {
+    if (nchar(num)==4) {
+      return(num)
+    }
+  }
+  dateStr1 = strsplit(dateStr, "-")
+  for (num in dateStr1[[1]]) {
+    if (nchar(num)==4) {
+      return(num)
+    }
+  }
   
+  dateStr1 = strsplit(dateStr, " ")
+  for (num in dateStr1[[1]]) {
+    if (nchar(num)==4) {
+      return(num)
+    }
+  }
+  
+  return(NA)
+}
 
 ```
