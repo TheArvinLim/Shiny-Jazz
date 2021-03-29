@@ -11,21 +11,14 @@ ui <- fluidPage(
 
     # Sidebar panel for inputs ----
     sidebarPanel(
-      actionButton("playMusic", "Play"),
-      actionButton("pauseMusic", "Pause"),
-      actionButton("resumeMusic", "Resume"),
-      actionButton("rewindMusic", "Rewind"),
       selectInput("selectedMusic", "Select Solo",
-                  choices = soloChoices)
+                  choices = soloChoices),
+
+      tags$audio(id="audio-player", src=NA, type="audio/wav", controls="TRUE"),
     ),
 
     # Main panel for displaying outputs ----
     mainPanel(
-      uiOutput("bar"),
-      uiOutput("notePlaying"),
-      uiOutput("chordPlaying"),
-      uiOutput("beatPlaying"),
-      uiOutput("songTime")
     )
   )
 )
