@@ -5,6 +5,8 @@ soloChoices = tidyr::unite(tables$solo_info, "Name", c("melid", "title", "perfor
 ui <- fluidPage(
   useShinyjs(),
 
+  tags$audio(id="audio-player", src=NA, type="audio/wav", controls="TRUE"),
+
   titlePanel("YA lIKE JAZZ?"),
 
     sidebarLayout(
