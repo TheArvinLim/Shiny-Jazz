@@ -105,3 +105,38 @@ getYear = function(dateStr) {
 }
 
 ```
+
+```{r}
+# Load package
+# devtools::install_github("mattflor/chorddiag")
+library(chorddiag)
+
+noteSuccession = tables$melody %>%
+  filter(melid==1) %>%
+  left_join(midiNoteTable, by=c("pitch"="MIDI Note")) %>%
+  select("Note") %>%
+  rowwise() %>%
+  mutate(Note = convertToKeyEnharmonic(Note, "Bb")) %>%
+  ungroup() %>%
+  mutate(nextNote = lead(Note)) %>%
+  filter(!is.na(nextNote)) %>%
+  count(Note, nextNote) 
+
+notes = unique(c(noteSuccession$Note, noteSuccession$nextNote))
+
+
+notes = c("Bb", "F", "C", "G","D", "A", "E", "B", "F#", "Db", "Ab", "Eb")
+
+m = matrix(0, nrow=length(notes), ncol=length(notes))
+dimnames(m) <- list(from = notes, to = notes)
+
+for (i in 1:nrow(noteSuccession)) {
+  m[noteSuccession[[i, "Note"]], noteSuccession[[i, "nextNote"]]] = noteSuccession[[i, "n"]]
+}
+
+groupColors=c(viridisLite::plasma(7), rev(viridisLite::plasma(6)[2:6]))
+
+# Build the chord diagram:
+p <- chorddiag(m, groupnamePadding = 20, showTicks = F, groupColors = groupColors)
+p
+```
